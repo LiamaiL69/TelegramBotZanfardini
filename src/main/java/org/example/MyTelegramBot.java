@@ -14,8 +14,9 @@ public class MyTelegramBot implements LongPollingSingleThreadUpdateConsumer {
 
     public MyTelegramBot(String botToken, UserService userService, NationService nationService) {
         this.telegramClient = new OkHttpTelegramClient(botToken);
-        this.commandHandler = new CommandHandler(userService, telegramClient);
         this.quizService = new QuizService(nationService, userService);
+        this.commandHandler = new CommandHandler(userService,quizService, telegramClient);
+
     }
 
     @Override

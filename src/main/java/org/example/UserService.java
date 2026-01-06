@@ -6,14 +6,17 @@ import java.util.List;
 
 public class UserService {
 
+    // Recupera o crea utente dal DB
     public User getOrCreateUser(long chatId, String name) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("SELECT points FROM users WHERE chat_id = ?");
+            PreparedStatement ps = conn.prepareStatement("SELECT points, quiz_played, quiz_won FROM users WHERE chat_id = ?");
             ps.setLong(1, chatId);
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
                 int points = rs.getInt("points");
+                int quizPlayed = rs.getInt("quiz_played");
+                int quizWon = rs.getInt("quiz_won");
 
                 // Carica NationDex
                 List<String> nationDex = new ArrayList<>();
@@ -26,10 +29,14 @@ public class UserService {
 
                 User user = new User(chatId, name);
                 user.addPoints(points);
+                user.incrementQuizPlayed(); // in memoria, verrà corretto da updateStats se serve
+                user.incrementQuizWon();
                 nationDex.forEach(user::addNation);
                 return user;
+
             } else {
-                PreparedStatement insert = conn.prepareStatement("INSERT INTO users (chat_id, name) VALUES (?, ?)");
+                PreparedStatement insert = conn.prepareStatement(
+                        "INSERT INTO users (chat_id, name) VALUES (?, ?)");
                 insert.setLong(1, chatId);
                 insert.setString(2, name);
                 insert.executeUpdate();
@@ -41,20 +48,27 @@ public class UserService {
         }
     }
 
-    public void updatePoints(User user) {
+    // Salva punti + statistiche quiz sul DB
+    public void updateStats(User user) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("UPDATE users SET points = ? WHERE chat_id = ?");
+            PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE users SET points = ?, quiz_played = ?, quiz_won = ? WHERE chat_id = ?"
+            );
             ps.setInt(1, user.getTotalPoints());
-            ps.setLong(2, user.getChatId());
+            ps.setInt(2, user.getQuizPlayed());
+            ps.setInt(3, user.getQuizWon());
+            ps.setLong(4, user.getChatId());
             ps.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
+    // Aggiunge nazione al NationDex e DB
     public void addNationToDex(User user, String nation) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("INSERT OR IGNORE INTO nationdex (chat_id, nation) VALUES (?, ?)");
+            PreparedStatement ps = conn.prepareStatement(
+                    "INSERT OR IGNORE INTO nationdex (chat_id, nation) VALUES (?, ?)");
             ps.setLong(1, user.getChatId());
             ps.setString(2, nation);
             ps.executeUpdate();
@@ -64,17 +78,48 @@ public class UserService {
         user.addNation(nation);
     }
 
-    public String getLeaderboardString() {
-        StringBuilder sb = new StringBuilder("🏆 Classifica globale:\n");
+    // Reset NationDex
+    public void resetNationDex(User user) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("SELECT * FROM users ORDER BY points DESC");
+            PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM nationdex WHERE chat_id = ?");
+            ps.setLong(1, user.getChatId());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        user.resetNationDex();
+    }
+
+    // Aggiorna username
+    public void updateUsername(User user, String newName) {
+        try (Connection conn = DatabaseManager.getConnection()) {
+            PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE users SET name = ? WHERE chat_id = ?");
+            ps.setString(1, newName);
+            ps.setLong(2, user.getChatId());
+            ps.executeUpdate();
+            user.setName(newName);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // Leaderboard
+    public String getLeaderboardString() {
+        StringBuilder sb = new StringBuilder("🏆 *Classifica globale:*\n");
+        try (Connection conn = DatabaseManager.getConnection()) {
+            PreparedStatement ps = conn.prepareStatement(
+                    "SELECT * FROM users ORDER BY points DESC LIMIT 10");
             ResultSet rs = ps.executeQuery();
 
             int rank = 1;
-            while (rs.next()&&rank<11) {
+            while (rs.next()) {
                 String name = rs.getString("name");
                 int points = rs.getInt("points");
-                sb.append(rank).append(". ").append(name).append(" - ").append(points).append(" punti\n");
+                String medal = rank == 1 ? "🥇 " : rank == 2 ? "🥈 " : rank == 3 ? "🥉 " : "";
+                sb.append(medal).append(rank).append(". ").append(name)
+                        .append(" - ").append(points).append(" punti\n");
                 rank++;
             }
         } catch (SQLException e) {
@@ -82,24 +127,27 @@ public class UserService {
             return "⚠️ Errore nel caricamento della leaderboard!";
         }
 
-        if (sb.toString().equals("🏆 Classifica globale:\n")) {
-            return "La leaderboard è vuota!";
+        if (sb.toString().equals("🏆 *Classifica globale:*\n")) {
+            return "_La leaderboard è vuota!_";
         }
         return sb.toString();
     }
 
-    public void updateUsername(User user, String newName) {
+    // Posizione dell’utente nella leaderboard
+    public int getUserRank(User user) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("UPDATE users SET name = ? WHERE chat_id = ?");
-            ps.setString(1, newName);
-            ps.setLong(2, user.getChatId());
-            ps.executeUpdate();
-
-            // Aggiorna anche l’oggetto in memoria
-            user = getOrCreateUser(user.getChatId(), newName);
+            PreparedStatement ps = conn.prepareStatement(
+                    "SELECT chat_id FROM users ORDER BY points DESC");
+            ResultSet rs = ps.executeQuery();
+            int rank = 1;
+            while (rs.next()) {
+                long id = rs.getLong("chat_id");
+                if (id == user.getChatId()) return rank;
+                rank++;
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
+        return -1; // se non trovato
     }
-
 }
