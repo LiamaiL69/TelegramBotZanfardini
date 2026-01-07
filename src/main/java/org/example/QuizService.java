@@ -83,6 +83,10 @@ public class QuizService {
         // Hint facili
         hints.add("🔤 Prima lettera del paese: " + nation.getName().charAt(0));
         hints.add("📏 Numero lettere del nome: " + nation.getName().length());
+        hints.add("🔀 Nome mescolato: " + shuffleString(nation.getName()));
+
+        int wordCount = nation.getName().trim().split("\\s+").length;
+        hints.add("📝 Numero di parole nel nome: " + wordCount);
 
         Collections.shuffle(hints);
         return hints;
@@ -97,5 +101,18 @@ public class QuizService {
             case 5: return 3;
             default: return 1;
         }
+    }
+
+    private String shuffleString(String input) {
+        List<Character> characters = new ArrayList<>();
+        for (char c : input.toCharArray()) {
+            characters.add(c);
+        }
+        Collections.shuffle(characters);
+        StringBuilder sb = new StringBuilder();
+        for (char c : characters) {
+            sb.append(c);
+        }
+        return sb.toString();
     }
 }
