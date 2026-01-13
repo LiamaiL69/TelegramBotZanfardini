@@ -9,7 +9,8 @@ public class UserService {
     // Recupera o crea utente dal DB
     public User getOrCreateUser(long chatId, String name) {
         try (Connection conn = DatabaseManager.getConnection()) {
-            PreparedStatement ps = conn.prepareStatement("SELECT points, quiz_played, quiz_won FROM users WHERE chat_id = ?");
+            PreparedStatement ps = conn.prepareStatement(
+                    "SELECT name, points, quiz_played, quiz_won FROM users WHERE chat_id = ?");
             ps.setLong(1, chatId);
             ResultSet rs = ps.executeQuery();
 
@@ -20,40 +21,44 @@ public class UserService {
 
                 // Carica NationDex
                 List<String> nationDex = new ArrayList<>();
-                PreparedStatement ps2 = conn.prepareStatement("SELECT nation FROM nationdex WHERE chat_id = ?");
+                PreparedStatement ps2 = conn.prepareStatement(
+                        "SELECT nation FROM nationdex WHERE chat_id = ?");
                 ps2.setLong(1, chatId);
                 ResultSet rs2 = ps2.executeQuery();
                 while (rs2.next()) {
                     nationDex.add(rs2.getString("nation"));
                 }
 
-                User user = new User(chatId, name);
+                User user = new User(chatId, rs.getString("name"));
                 user.addPoints(points);
-                user.incrementQuizPlayed(); // in memoria, verrà corretto da updateStats se serve
-                user.incrementQuizWon();
+                user.setQuizPlayed(quizPlayed);   // Imposta correttamente dal DB
+                user.setQuizWon(quizWon);         // Imposta correttamente dal DB
                 nationDex.forEach(user::addNation);
+
                 return user;
 
             } else {
+                // Inserimento nuovo utente
                 PreparedStatement insert = conn.prepareStatement(
-                        "INSERT INTO users (chat_id, name) VALUES (?, ?)");
+                        "INSERT INTO users (chat_id, name, points, quiz_played, quiz_won) VALUES (?, ?, 0, 0, 0)");
                 insert.setLong(1, chatId);
                 insert.setString(2, name);
                 insert.executeUpdate();
+
                 return new User(chatId, name);
             }
+
         } catch (SQLException e) {
             e.printStackTrace();
             return new User(chatId, name);
         }
     }
 
-    // Salva punti + statistiche quiz sul DB
+    // Aggiorna punti e statistiche quiz
     public void updateStats(User user) {
         try (Connection conn = DatabaseManager.getConnection()) {
             PreparedStatement ps = conn.prepareStatement(
-                    "UPDATE users SET points = ?, quiz_played = ?, quiz_won = ? WHERE chat_id = ?"
-            );
+                    "UPDATE users SET points = ?, quiz_played = ?, quiz_won = ? WHERE chat_id = ?");
             ps.setInt(1, user.getTotalPoints());
             ps.setInt(2, user.getQuizPlayed());
             ps.setInt(3, user.getQuizWon());

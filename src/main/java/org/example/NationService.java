@@ -5,20 +5,19 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 public class NationService {
 
     private final List<Nation> nations = new ArrayList<>();
 
-    public NationService(String apiKey) {
-        loadNations(apiKey);
+    public NationService() {
+        loadNations();
     }
 
-    private void loadNations(String apiKey) {
+    private void loadNations() {
         try {
-            String url = "http://api.countrylayer.com/v2/all?access_key=" + apiKey;
+            String url = "https://restcountries.com/v3.1/all?fields=name,capital,region,tld,flags,currencies,languages";
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
@@ -40,17 +39,40 @@ public class NationService {
         for (JsonElement element : array) {
             JsonObject obj = element.getAsJsonObject();
 
-            String name = safeString(obj, "name");
-            String capital = safeString(obj, "capital");
+            String name = safeNestedString(obj, "name", "common");
+            String capital = safeArrayFirst(obj, "capital");
             String region = safeString(obj, "region");
+            String flagUrl = safeNestedString(obj, "flags", "svg");
 
+            // Top level domain
             List<String> tlds = new ArrayList<>();
-            JsonArray tldsArray = obj.getAsJsonArray("topLevelDomain");
+            JsonArray tldsArray = obj.getAsJsonArray("tld");
             if (tldsArray != null) {
                 for (JsonElement t : tldsArray) tlds.add(t.getAsString());
             }
 
-            nations.add(new Nation(name, capital, region, tlds));
+            // Currencies
+            Map<String, String> currencies = new HashMap<>();
+            JsonObject currencyObj = obj.getAsJsonObject("currencies");
+            if (currencyObj != null) {
+                for (String key : currencyObj.keySet()) {
+                    JsonObject cur = currencyObj.getAsJsonObject(key);
+                    if (cur != null && cur.has("name")) {
+                        currencies.put(key, cur.get("name").getAsString());
+                    }
+                }
+            }
+
+            // Languages
+            Map<String, String> languages = new HashMap<>();
+            JsonObject langObj = obj.getAsJsonObject("languages");
+            if (langObj != null) {
+                for (String key : langObj.keySet()) {
+                    languages.put(key, langObj.get(key).getAsString());
+                }
+            }
+
+            nations.add(new Nation(name, capital, region, tlds, flagUrl, currencies, languages));
         }
     }
 
@@ -59,6 +81,18 @@ public class NationService {
         return (el == null || el.isJsonNull()) ? "Unknown" : el.getAsString();
     }
 
-    public List<Nation> getAllNations() { return nations; }
+    private String safeNestedString(JsonObject obj, String parent, String child) {
+        JsonObject parentObj = obj.getAsJsonObject(parent);
+        if (parentObj == null || parentObj.isJsonNull()) return "Unknown";
+        JsonElement el = parentObj.get(child);
+        return (el == null || el.isJsonNull()) ? "Unknown" : el.getAsString();
+    }
+
+    private String safeArrayFirst(JsonObject obj, String field) {
+        JsonArray arr = obj.getAsJsonArray(field);
+        if (arr != null && arr.size() > 0) return arr.get(0).getAsString();
+        return "Unknown";
+    }
+
     public Nation getRandomNation() { return nations.get((int) (Math.random() * nations.size())); }
 }

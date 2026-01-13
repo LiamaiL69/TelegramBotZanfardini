@@ -24,15 +24,19 @@ public class User {
     public long getChatId() { return chatId; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
     public int getTotalPoints() { return totalPoints; }
     public void addPoints(int points) { this.totalPoints += points; }
+
     public Set<String> getNationDex() { return nationDex; }
     public void addNation(String nation) { nationDex.add(nation); }
     public void resetNationDex() { nationDex.clear(); }
 
-    // --- Statistiche quiz ---
     public int getQuizPlayed() { return quizPlayed; }
-    public int getQuizWon() { return quizWon; }
+    public void setQuizPlayed(int quizPlayed) { this.quizPlayed = quizPlayed; }
     public void incrementQuizPlayed() { this.quizPlayed++; }
+
+    public int getQuizWon() { return quizWon; }
+    public void setQuizWon(int quizWon) { this.quizWon = quizWon; }
     public void incrementQuizWon() { this.quizWon++; }
 }

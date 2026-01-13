@@ -1,5 +1,11 @@
 package org.example;
 
+import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
+import org.telegram.telegrambots.meta.api.objects.InputFile;
+import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
+import org.telegram.telegrambots.meta.generics.TelegramClient;
+
 import java.util.*;
 
 public class QuizService {
@@ -8,10 +14,12 @@ public class QuizService {
     private final UserService userService;
     private final Map<Long, QuizSession> activeQuizzes = new HashMap<>();
     private static final int MAX_HINTS = 5;
+    private final TelegramClient telegramClient;
 
-    public QuizService(NationService nationService, UserService userService) {
+    public QuizService(NationService nationService, UserService userService, TelegramClient telegramClient) {
         this.nationService = nationService;
         this.userService = userService;
+        this.telegramClient = telegramClient;
     }
 
     public String startQuiz(long chatId) {
@@ -41,8 +49,8 @@ public class QuizService {
             int points = calculatePoints(hintsUsed);
 
             user.addPoints(points);
-            user.incrementQuizWon();             // incrementa vittorie
-            userService.updateStats(user);       // salva tutto sul DB
+            user.incrementQuizWon();
+            userService.updateStats(user);
             userService.addNationToDex(user, session.getNation().getName());
 
             activeQuizzes.remove(chatId);
@@ -51,19 +59,21 @@ public class QuizService {
                     "\n⭐ Punti ottenuti: " + points +
                     "\n🏅 Punti totali: " + user.getTotalPoints() +
                     "\n🎯 Quiz vinti: " + user.getQuizWon() +
-                    "\n🎲 Quiz giocati: " + user.getQuizPlayed();
+                    "\n🎲 Quiz giocati: " + user.getQuizPlayed()+
+                    "\n   Per ricominciare rapidamente: /quiz";
         } else {
             if (session.getHintsUsed() >= MAX_HINTS) {
                 activeQuizzes.remove(chatId);
-                return "❌ Hai esaurito i 5 indizi!\nLa risposta era: " +
-                        session.getNation().getName();
+                return "❌ Hai esaurito i " + MAX_HINTS + " indizi!\nLa risposta era: " +
+                        session.getNation().getName()+ "\n   Per ricominciare rapidamente: /quiz";
             }
 
             String nextHint = session.nextHint();
-            if (nextHint == null) {
-                activeQuizzes.remove(chatId);
-                return "❌ Hai finito tutti gli indizi!\nLa risposta era: " +
-                        session.getNation().getName();
+
+
+            if (nextHint.equals("FLAG")) {
+                sendFlag(chatId, session.getNation());
+                return "Sbagliato!\n\nNuovo indizio\n\n🚩 *Ecco la bandiera!*";
             }
 
             return "❌ Sbagliato!\n\nNuovo indizio (" + session.getHintsUsed() + "/" + MAX_HINTS + "):\n" +
@@ -74,17 +84,30 @@ public class QuizService {
     private List<String> buildHints(Nation nation) {
         List<String> hints = new ArrayList<>();
 
+        // Hint principali
         hints.add("🌍 Continente: " + nation.getRegion());
         if (!nation.getCapital().equals("Unknown"))
             hints.add("🏙️ Capitale: " + nation.getCapital());
         if (!nation.getTopLevelDomain().isEmpty())
             hints.add("🌐 Top Level Domain: " + nation.getTopLevelDomain().get(0));
 
+        // Currency come hint
+        if (!nation.getCurrencies().isEmpty()) {
+            String currencyHint = nation.getCurrencies().entrySet().iterator().next().getValue(); // nome valuta
+            hints.add("💰 Valuta principale: " + currencyHint);
+        }
+
+        // Lingua come hint
+        if (!nation.getLanguages().isEmpty()) {
+            String languageHint = nation.getLanguages().entrySet().iterator().next().getValue();
+            hints.add("🗣️ Lingua principale: " + languageHint);
+        }
+
         // Hint facili
         hints.add("🔤 Prima lettera del paese: " + nation.getName().charAt(0));
         hints.add("📏 Numero lettere del nome: " + nation.getName().length());
         hints.add("🔀 Nome mescolato: " + shuffleString(nation.getName()));
-
+        hints.add("FLAG");
         int wordCount = nation.getName().trim().split("\\s+").length;
         hints.add("📝 Numero di parole nel nome: " + wordCount);
 
@@ -105,14 +128,26 @@ public class QuizService {
 
     private String shuffleString(String input) {
         List<Character> characters = new ArrayList<>();
-        for (char c : input.toCharArray()) {
-            characters.add(c);
-        }
+        for (char c : input.toCharArray()) characters.add(c);
         Collections.shuffle(characters);
         StringBuilder sb = new StringBuilder();
-        for (char c : characters) {
-            sb.append(c);
-        }
+        for (char c : characters) sb.append(c);
         return sb.toString();
+    }
+
+    private void sendFlag(long chatId, Nation nation) {
+        String flagUrl = nation.getFlagUrl();
+        if (flagUrl.equals("Unknown")) return;
+
+        SendPhoto photo = SendPhoto.builder()
+                .chatId(chatId)
+                .photo(new InputFile(flagUrl))
+                .build();
+
+        try {
+            telegramClient.execute(photo);
+        } catch (TelegramApiException e) {
+            e.printStackTrace();
+        }
     }
 }
