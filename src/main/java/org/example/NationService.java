@@ -17,7 +17,7 @@ public class NationService {
 
     private void loadNations() {
         try {
-            String url = "https://restcountries.com/v3.1/all?fields=name,capital,region,tld,flags,currencies,languages";
+            String url = "https://restcountries.com/v3.1/all?fields=name,capital,region,tld,currencies,languages,flags";
 
             HttpClient client = HttpClient.newHttpClient();
             HttpRequest request = HttpRequest.newBuilder()
@@ -29,6 +29,7 @@ public class NationService {
             parseResponse(response.body());
 
             System.out.println("✅ Loaded " + nations.size() + " nations");
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to load nations", e);
         }
@@ -40,59 +41,69 @@ public class NationService {
             JsonObject obj = element.getAsJsonObject();
 
             String name = safeNestedString(obj, "name", "common");
-            String capital = safeArrayFirst(obj, "capital");
+            String capital = safeArrayString(obj, "capital", 0);
             String region = safeString(obj, "region");
-            String flagUrl = safeNestedString(obj, "flags", "svg");
+            List<String> tlds = safeStringList(obj, "tld");
+            Map<String, String> currencies = safeMap(obj, "currencies");
+            Map<String, String> languages = safeMap(obj, "languages");
 
-            // Top level domain
-            List<String> tlds = new ArrayList<>();
-            JsonArray tldsArray = obj.getAsJsonArray("tld");
-            if (tldsArray != null) {
-                for (JsonElement t : tldsArray) tlds.add(t.getAsString());
+            String flagPng = "Unknown";
+            if (obj.has("flags") && obj.get("flags").isJsonObject()) {
+                flagPng = safeString(obj.getAsJsonObject("flags"), "png");
             }
 
-            // Currencies
-            Map<String, String> currencies = new HashMap<>();
-            JsonObject currencyObj = obj.getAsJsonObject("currencies");
-            if (currencyObj != null) {
-                for (String key : currencyObj.keySet()) {
-                    JsonObject cur = currencyObj.getAsJsonObject(key);
-                    if (cur != null && cur.has("name")) {
-                        currencies.put(key, cur.get("name").getAsString());
-                    }
-                }
-            }
-
-            // Languages
-            Map<String, String> languages = new HashMap<>();
-            JsonObject langObj = obj.getAsJsonObject("languages");
-            if (langObj != null) {
-                for (String key : langObj.keySet()) {
-                    languages.put(key, langObj.get(key).getAsString());
-                }
-            }
-
-            nations.add(new Nation(name, capital, region, tlds, flagUrl, currencies, languages));
+            nations.add(new Nation(name, capital, region, tlds, currencies, languages, flagPng));
         }
     }
 
-    private String safeString(JsonObject obj, String field) {
-        JsonElement el = obj.get(field);
+    // --- Helpers per parsing JSON ---
+    private String safeString(JsonObject obj, String key) {
+        JsonElement el = obj.get(key);
         return (el == null || el.isJsonNull()) ? "Unknown" : el.getAsString();
     }
 
     private String safeNestedString(JsonObject obj, String parent, String child) {
-        JsonObject parentObj = obj.getAsJsonObject(parent);
-        if (parentObj == null || parentObj.isJsonNull()) return "Unknown";
-        JsonElement el = parentObj.get(child);
-        return (el == null || el.isJsonNull()) ? "Unknown" : el.getAsString();
+        if (!obj.has(parent) || obj.get(parent).isJsonNull()) return "Unknown";
+        JsonObject o = obj.getAsJsonObject(parent);
+        return o.has(child) && !o.get(child).isJsonNull() ? o.get(child).getAsString() : "Unknown";
     }
 
-    private String safeArrayFirst(JsonObject obj, String field) {
-        JsonArray arr = obj.getAsJsonArray(field);
-        if (arr != null && arr.size() > 0) return arr.get(0).getAsString();
+    private String safeArrayString(JsonObject obj, String key, int index) {
+        if (!obj.has(key) || obj.get(key).isJsonNull()) return "Unknown";
+        JsonArray array = obj.getAsJsonArray(key);
+        if (array.size() > index) return array.get(index).getAsString();
         return "Unknown";
     }
 
-    public Nation getRandomNation() { return nations.get((int) (Math.random() * nations.size())); }
+    private List<String> safeStringList(JsonObject obj, String key) {
+        List<String> list = new ArrayList<>();
+        if (obj.has(key) && !obj.get(key).isJsonNull()) {
+            JsonArray arr = obj.getAsJsonArray(key);
+            for (JsonElement e : arr) list.add(e.getAsString());
+        }
+        return list;
+    }
+
+    private Map<String, String> safeMap(JsonObject obj, String key) {
+        Map<String, String> map = new HashMap<>();
+        if (obj.has(key) && obj.get(key).isJsonObject()) {
+            JsonObject o = obj.getAsJsonObject(key);
+            for (String k : o.keySet()) {
+                JsonElement el = o.get(k);
+                if (el.isJsonObject()) {
+                    JsonObject inner = el.getAsJsonObject();
+                    String name = inner.has("name") ? inner.get("name").getAsString() : "Unknown";
+                    map.put(k, name);
+                } else if (el.isJsonPrimitive()) {
+                    map.put(k, el.getAsString());
+                } else {
+                    map.put(k, "Unknown");
+                }
+            }
+        }
+        return map;
+    }
+
+
+    public Nation getRandomNation() { return nations.get((int)(Math.random() * nations.size())); }
 }

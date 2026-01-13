@@ -1,6 +1,5 @@
 package org.example;
 
-import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.methods.send.SendPhoto;
 import org.telegram.telegrambots.meta.api.objects.InputFile;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -24,9 +23,8 @@ public class QuizService {
 
     public String startQuiz(long chatId) {
         User user = userService.getOrCreateUser(chatId, "Player" + chatId);
-
-        user.incrementQuizPlayed();           // aumenta quiz giocati
-        userService.updateStats(user);        // salva statistiche nel DB
+        user.incrementQuizPlayed();
+        userService.updateStats(user);
 
         Nation nation = nationService.getRandomNation();
         List<String> hints = buildHints(nation);
@@ -34,6 +32,7 @@ public class QuizService {
         QuizSession session = new QuizSession(nation, hints);
         activeQuizzes.put(chatId, session);
 
+        // Primo hint + messaggio iniziale
         return "🧠 *Quiz iniziato!* Hai massimo " + MAX_HINTS + " indizi.\n\n" +
                 session.nextHint();
     }
@@ -59,17 +58,20 @@ public class QuizService {
                     "\n⭐ Punti ottenuti: " + points +
                     "\n🏅 Punti totali: " + user.getTotalPoints() +
                     "\n🎯 Quiz vinti: " + user.getQuizWon() +
-                    "\n🎲 Quiz giocati: " + user.getQuizPlayed()+
-                    "\n   Per ricominciare rapidamente: /quiz";
+                    "\n🎲 Quiz giocati: " + user.getQuizPlayed();
         } else {
             if (session.getHintsUsed() >= MAX_HINTS) {
                 activeQuizzes.remove(chatId);
                 return "❌ Hai esaurito i " + MAX_HINTS + " indizi!\nLa risposta era: " +
-                        session.getNation().getName()+ "\n   Per ricominciare rapidamente: /quiz";
+                        session.getNation().getName();
             }
 
             String nextHint = session.nextHint();
-
+            if (nextHint == null) {
+                activeQuizzes.remove(chatId);
+                return "❌ Hai finito tutti gli indizi!\nLa risposta era: " +
+                        session.getNation().getName();
+            }
 
             if (nextHint.equals("FLAG")) {
                 sendFlag(chatId, session.getNation());
@@ -84,7 +86,6 @@ public class QuizService {
     private List<String> buildHints(Nation nation) {
         List<String> hints = new ArrayList<>();
 
-        // Hint principali
         hints.add("🌍 Continente: " + nation.getRegion());
         if (!nation.getCapital().equals("Unknown"))
             hints.add("🏙️ Capitale: " + nation.getCapital());
@@ -93,21 +94,21 @@ public class QuizService {
 
         // Currency come hint
         if (!nation.getCurrencies().isEmpty()) {
-            String currencyHint = nation.getCurrencies().entrySet().iterator().next().getValue(); // nome valuta
-            hints.add("💰 Valuta principale: " + currencyHint);
+            String currency = nation.getCurrencies().values().iterator().next();
+            hints.add("💰 Valuta principale: " + currency);
         }
 
         // Lingua come hint
         if (!nation.getLanguages().isEmpty()) {
-            String languageHint = nation.getLanguages().entrySet().iterator().next().getValue();
-            hints.add("🗣️ Lingua principale: " + languageHint);
+            String language = nation.getLanguages().values().iterator().next();
+            hints.add("🗣️ Lingua principale: " + language);
         }
 
         // Hint facili
         hints.add("🔤 Prima lettera del paese: " + nation.getName().charAt(0));
         hints.add("📏 Numero lettere del nome: " + nation.getName().length());
         hints.add("🔀 Nome mescolato: " + shuffleString(nation.getName()));
-        hints.add("FLAG");
+        hints.add("FLAG"); // indizio speciale
         int wordCount = nation.getName().trim().split("\\s+").length;
         hints.add("📝 Numero di parole nel nome: " + wordCount);
 
@@ -136,8 +137,8 @@ public class QuizService {
     }
 
     private void sendFlag(long chatId, Nation nation) {
-        String flagUrl = nation.getFlagUrl();
-        if (flagUrl.equals("Unknown")) return;
+        String flagUrl = nation.getFlagPng();
+        if (flagUrl == null || flagUrl.equals("Unknown")) return;
 
         SendPhoto photo = SendPhoto.builder()
                 .chatId(chatId)
