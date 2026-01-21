@@ -58,20 +58,17 @@ public class QuizService {
                     "\n⭐ Punti ottenuti: " + points +
                     "\n🏅 Punti totali: " + user.getTotalPoints() +
                     "\n🎯 Quiz vinti: " + user.getQuizWon() +
-                    "\n🎲 Quiz giocati: " + user.getQuizPlayed();
+                    "\n🎲 Quiz giocati: " + user.getQuizPlayed()+
+                    "\n      Per ricominciare velocemente: /quiz";
         } else {
             if (session.getHintsUsed() >= MAX_HINTS) {
                 activeQuizzes.remove(chatId);
                 return "❌ Hai esaurito i " + MAX_HINTS + " indizi!\nLa risposta era: " +
-                        session.getNation().getName();
+                        session.getNation().getName()+"\nPer ricominciare velocemente: /quiz";
             }
 
             String nextHint = session.nextHint();
-            if (nextHint == null) {
-                activeQuizzes.remove(chatId);
-                return "❌ Hai finito tutti gli indizi!\nLa risposta era: " +
-                        session.getNation().getName();
-            }
+
 
             if (nextHint.equals("FLAG")) {
                 sendFlag(chatId, session.getNation());
